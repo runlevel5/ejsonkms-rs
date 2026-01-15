@@ -236,7 +236,7 @@ To use, add the following to a `.pre-commit-config.yaml` file in your repository
 
 ```yaml
 repos:
-  - repo: https://github.com/runlevel5/ejsonkms
+  - repo: https://github.com/runlevel5/ejsonkms-rs
     hooks:
       - id: run-ejsonkms-encrypt
 ```
