@@ -1,6 +1,6 @@
 # ejsonkms-rs
 
-A Rust implementation of [envato/ejsonkms](https://github.com/envato/ejsonkms). This is a drop-in replacement for the original Go implementation, with support for **YAML** file format (and plan to support **TOML**).
+A Rust implementation of [envato/ejsonkms](https://github.com/envato/ejsonkms). This is a drop-in replacement for the original Go implementation, with support for **YAML** and **TOML** file formats.
 
  `ejsonkms` combines the [ejson](https://github.com/runlevel5/ejson-rs) and [ejson2env](https://github.com/runlevel5/ejson2env-rs) libraries with [AWS Key Management Service](https://aws.amazon.com/kms/) to simplify deployments on AWS. The EJSON private key is encrypted with KMS and stored inside the EJSON file as `_private_key_enc`. Access to decrypt secrets can be controlled with IAM permissions on the KMS key.
 
@@ -10,7 +10,7 @@ A Rust implementation of [envato/ejsonkms](https://github.com/envato/ejsonkms). 
 |--------|------------|--------|
 | JSON   | `.ejson`, `.json` | Supported |
 | YAML   | `.eyaml`, `.eyml`, `.yaml`, `.yml` | Supported |
-| TOML   | `.etoml` | Planned |
+| TOML   | `.etoml`, `.toml` | Supported |
 
 The file format is automatically detected based on the file extension.
 
@@ -133,6 +133,41 @@ $ ejsonkms decrypt secrets.eyaml
 $ ejsonkms env secrets.eyaml
 ```
 
+### TOML Format Example
+
+To generate a TOML file, use a `.etoml` or `.toml` extension:
+
+```shell
+$ ejsonkms keygen --aws-region us-east-1 --kms-key-id bc436485-5092-42b8-92a3-0aa8b93536dc -o secrets.etoml
+$ cat secrets.etoml
+_public_key = "6b8280f86aff5f48773f63d60e655e2f3dd0dd7c14f5fecb5df22936e5a3be52"
+_private_key_enc = "S2Fybjphd3M6a21zOnVzLWVhc3QtMToxMTExMjIyMjMzMzM6a2V5L2JjNDM2NDg1LTUwOTItNDJiOC05MmEzLTBhYThiOTM1MzZkYwAAAAA..."
+```
+
+The same secrets can be stored in TOML format:
+
+```toml
+# secrets.etoml
+_public_key = "6b8280f86aff5f48773f63d60e655e2f3dd0dd7c14f5fecb5df22936e5a3be52"
+_private_key_enc = "S2Fybjphd3M6a21zOnVzLWVhc3QtMToxMTExMjIyMjMzMzM6a2V5L2JjNDM2NDg1LTUwOTItNDJiOC05MmEzLTBhYThiOTM1MzZkYwAAAAA..."
+
+[environment]
+DATABASE_PASSWORD = "supersecretpassword"
+API_KEY = "sk-1234567890abcdef"
+JWT_SECRET = "my-jwt-signing-key"
+_DATABASE_HOST = "db.example.com"
+_DATABASE_PORT = "5432"
+_APP_ENV = "production"
+```
+
+All commands work the same way with TOML files:
+
+```shell
+$ ejsonkms encrypt secrets.etoml
+$ ejsonkms decrypt secrets.etoml
+$ ejsonkms env secrets.etoml
+```
+
 Decrypting:
 
 ```shell
@@ -195,7 +230,7 @@ This is useful when you want non-secret configuration values like `_DATABASE_HOS
 
 ## pre-commit hook
 
-A [pre-commit](https://pre-commit.com/) hook is also supported to automatically run `ejsonkms encrypt` on all `.ejson`, `.eyaml`, and `.eyml` files in a repository.
+A [pre-commit](https://pre-commit.com/) hook is also supported to automatically run `ejsonkms encrypt` on all `.ejson`, `.eyaml`, `.eyml`, `.etoml`, and `.toml` files in a repository.
 
 To use, add the following to a `.pre-commit-config.yaml` file in your repository:
 

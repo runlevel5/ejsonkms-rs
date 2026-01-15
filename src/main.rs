@@ -184,6 +184,7 @@ async fn keygen_action(
     let output_content = match format {
         FileFormat::Json => serde_json::to_string_pretty(&ejson_file)?,
         FileFormat::Yaml => serde_yml::to_string(&ejson_file)?,
+        FileFormat::Toml => toml::to_string_pretty(&ejson_file)?,
     };
 
     // NOTE: Private key is intentionally NOT printed to avoid security risks.
