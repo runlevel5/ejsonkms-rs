@@ -19,8 +19,8 @@ path = "src/lib.rs"
 
 [dependencies]
 # EJSON libraries
-ejson = { git = "https://github.com/runlevel5/ejson-rs.git", tag = "v0.0.7" }
-ejson2env = { git = "https://github.com/runlevel5/ejson2env-rs.git", tag = "v0.0.5" }
+ejson = { git = "https://github.com/runlevel5/ejson-rs.git", tag = "v0.0.8" }
+ejson2env = { git = "https://github.com/runlevel5/ejson2env-rs.git", tag = "v0.0.6" }
 
 # AWS SDK
 aws-config = "1.8"
