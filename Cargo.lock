@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "ejsonkms"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -808,6 +808,7 @@ dependencies = [
  "ejson2env",
  "serde",
  "serde_json",
+ "serde_yml",
  "tempfile",
  "thiserror",
  "tokio",

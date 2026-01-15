@@ -7,20 +7,55 @@
 pub mod kms;
 
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use thiserror::Error;
 
 pub use kms::{decrypt_private_key_with_kms, encrypt_private_key_with_kms, KmsError};
 
+/// Supported file formats for EJSON files
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FileFormat {
+    #[default]
+    Json,
+    Yaml,
+}
+
+impl FileFormat {
+    /// Detect the file format from a file path based on extension
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, EjsonKmsError> {
+        match path.as_ref().extension().and_then(OsStr::to_str) {
+            Some("eyaml") | Some("eyml") | Some("yaml") | Some("yml") => Ok(FileFormat::Yaml),
+            Some("ejson") | Some("json") => Ok(FileFormat::Json),
+            Some(ext) => Err(EjsonKmsError::UnsupportedFileExtension(ext.to_string())),
+            None => Err(EjsonKmsError::UnsupportedFileExtension(
+                "(none)".to_string(),
+            )),
+        }
+    }
+
+    /// Get the file extension for this format
+    pub fn extension(&self) -> &'static str {
+        match self {
+            FileFormat::Json => "ejson",
+            FileFormat::Yaml => "eyaml",
+        }
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum EjsonKmsError {
     #[error("missing _private_key_enc field")]
     MissingPrivateKeyEnc,
+    #[error("unsupported file extension: {0}")]
+    UnsupportedFileExtension(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
+    #[error("YAML error: {0}")]
+    YamlError(#[from] serde_yml::Error),
     #[error("KMS error: {0}")]
     KmsError(#[from] KmsError),
     #[error("EJSON error: {0}")]
@@ -105,12 +140,93 @@ pub async fn decrypt<P: AsRef<Path>>(
     Ok(decrypted)
 }
 
-/// Finds the _private_key_enc field in an EJSON file
+/// Finds the _private_key_enc field in an EJSON file (supports JSON and YAML)
 pub fn find_private_key_enc<P: AsRef<Path>>(ejson_file_path: P) -> Result<String, EjsonKmsError> {
-    let content = fs::read_to_string(ejson_file_path)?;
-    let file: EjsonKmsFile = serde_json::from_str(&content)?;
+    let path = ejson_file_path.as_ref();
+    let content = fs::read_to_string(path)?;
+    let format = FileFormat::from_path(path)?;
+
+    let file: EjsonKmsFile = match format {
+        FileFormat::Json => serde_json::from_str(&content)?,
+        FileFormat::Yaml => serde_yml::from_str(&content)?,
+    };
 
     file.private_key_enc
         .filter(|s| !s.is_empty())
         .ok_or(EjsonKmsError::MissingPrivateKeyEnc)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_path_json_extensions() {
+        assert_eq!(
+            FileFormat::from_path("file.json").unwrap(),
+            FileFormat::Json
+        );
+        assert_eq!(
+            FileFormat::from_path("file.ejson").unwrap(),
+            FileFormat::Json
+        );
+        assert_eq!(
+            FileFormat::from_path("path/to/file.json").unwrap(),
+            FileFormat::Json
+        );
+        assert_eq!(
+            FileFormat::from_path("path/to/file.ejson").unwrap(),
+            FileFormat::Json
+        );
+    }
+
+    #[test]
+    fn test_from_path_yaml_extensions() {
+        assert_eq!(
+            FileFormat::from_path("file.yaml").unwrap(),
+            FileFormat::Yaml
+        );
+        assert_eq!(FileFormat::from_path("file.yml").unwrap(), FileFormat::Yaml);
+        assert_eq!(
+            FileFormat::from_path("file.eyaml").unwrap(),
+            FileFormat::Yaml
+        );
+        assert_eq!(
+            FileFormat::from_path("file.eyml").unwrap(),
+            FileFormat::Yaml
+        );
+        assert_eq!(
+            FileFormat::from_path("path/to/file.eyaml").unwrap(),
+            FileFormat::Yaml
+        );
+    }
+
+    #[test]
+    fn test_from_path_unsupported_extension() {
+        let err = FileFormat::from_path("file.txt").unwrap_err();
+        assert!(matches!(err, EjsonKmsError::UnsupportedFileExtension(ext) if ext == "txt"));
+
+        let err = FileFormat::from_path("file.xml").unwrap_err();
+        assert!(matches!(err, EjsonKmsError::UnsupportedFileExtension(ext) if ext == "xml"));
+    }
+
+    #[test]
+    fn test_from_path_no_extension() {
+        let err = FileFormat::from_path("file").unwrap_err();
+        assert!(matches!(err, EjsonKmsError::UnsupportedFileExtension(ext) if ext == "(none)"));
+
+        let err = FileFormat::from_path("path/to/file").unwrap_err();
+        assert!(matches!(err, EjsonKmsError::UnsupportedFileExtension(ext) if ext == "(none)"));
+    }
+
+    #[test]
+    fn test_file_format_extension() {
+        assert_eq!(FileFormat::Json.extension(), "ejson");
+        assert_eq!(FileFormat::Yaml.extension(), "eyaml");
+    }
+
+    #[test]
+    fn test_file_format_default() {
+        assert_eq!(FileFormat::default(), FileFormat::Json);
+    }
 }
