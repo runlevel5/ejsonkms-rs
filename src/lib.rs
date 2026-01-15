@@ -103,7 +103,9 @@ struct EjsonKmsFile {
 }
 
 /// Output structure for keygen (matches the Go version)
-#[derive(Debug, Serialize)]
+///
+/// Security: Contains only encrypted/public data, but implements Zeroize for defense in depth
+#[derive(Debug, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct EjsonKmsOutput {
     #[serde(rename = "_public_key")]
     pub public_key: String,
@@ -141,6 +143,9 @@ pub async fn keygen(
 }
 
 /// Decrypts an EJSON file using KMS to first decrypt the private key
+///
+/// Security: The decrypted private key is zeroized after use to prevent sensitive
+/// data from lingering in memory.
 pub async fn decrypt<P: AsRef<Path>>(
     ejson_file_path: P,
     aws_region: Option<&str>,
@@ -151,15 +156,18 @@ pub async fn decrypt<P: AsRef<Path>>(
     let private_key_enc = find_private_key_enc(path)?;
 
     // Decrypt the private key using KMS
-    let kms_decrypted_private_key =
+    let mut kms_decrypted_private_key =
         decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
 
     // Decrypt the EJSON file using the decrypted private key
     // Pass empty string for keydir since we're providing the private key directly
     let decrypted = ejson::decrypt_file(path, "", &kms_decrypted_private_key)
-        .map_err(|e| EjsonKmsError::EjsonError(e.to_string()))?;
+        .map_err(|e| EjsonKmsError::EjsonError(e.to_string()));
 
-    Ok(decrypted)
+    // Zeroize the decrypted private key immediately after use
+    kms_decrypted_private_key.zeroize();
+
+    decrypted
 }
 
 /// Finds the _private_key_enc field in an EJSON file (supports JSON and YAML)

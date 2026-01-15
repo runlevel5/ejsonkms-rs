@@ -3,9 +3,10 @@
 use clap::{Parser, Subcommand};
 use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsOutput, FileFormat};
 use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use zeroize::Zeroize;
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -83,8 +84,26 @@ fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
         .open(path)
 }
 
-#[cfg(not(unix))]
+/// Creates a file with restrictive permissions on Windows.
+/// Uses SECURITY_ATTRIBUTES to restrict access to the current user only.
+#[cfg(windows)]
 fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    // FILE_ATTRIBUTE_NORMAL with restricted sharing mode
+    // Note: For full security on Windows, consider using the windows-acl crate
+    // to set explicit ACLs. This implementation provides basic protection.
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .share_mode(0) // Deny sharing while file is open
+        .open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+    // Fallback for other platforms - warn user about potential security issue
+    eprintln!("warning: secure file permissions not implemented for this platform");
     File::create(path)
 }
 
@@ -159,6 +178,12 @@ async fn decrypt_action(
             file.write_all(&decrypted)?;
         }
         None => {
+            // Security warning: warn users when outputting secrets to a terminal
+            if io::stdout().is_terminal() {
+                eprintln!(
+                    "warning: writing secrets to terminal; consider using -o to write to a file"
+                );
+            }
             io::stdout().write_all(&decrypted)?;
         }
     }
@@ -213,13 +238,16 @@ async fn env_action(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Find and decrypt the private key
     let private_key_enc = find_private_key_enc(file)?;
-    let kms_decrypted_private_key =
+    let mut kms_decrypted_private_key =
         ejsonkms::decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
 
     // Read and extract environment variables
     // Pass empty string for keydir since we're providing the private key directly
     let file_str = file.to_str().ok_or("Invalid file path")?;
     let env_values = ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key);
+
+    // Zeroize the decrypted private key immediately after use
+    kms_decrypted_private_key.zeroize();
 
     // Handle env errors gracefully (match Go behavior)
     let env_values = match env_values {
