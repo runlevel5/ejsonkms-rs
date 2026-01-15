@@ -57,7 +57,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -68,7 +68,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -741,26 +741,6 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "ejson"
-version = "0.0.6"
-source = "git+https://github.com/runlevel5/ejson-rs?tag=v0.0.6#d7f09dbb3507e6b679678d938692e84b297940c5"
-dependencies = [
- "anyhow",
- "base64",
- "clap",
- "crypto_box",
- "hex",
- "rand",
- "regex",
- "serde",
- "serde_json",
- "serde_yml",
- "thiserror",
- "toml 0.9.11+spec-1.1.0",
- "toml_edit 0.24.0+spec-1.1.0",
-]
-
-[[package]]
-name = "ejson"
 version = "0.0.7"
 source = "git+https://github.com/runlevel5/ejson-rs.git?tag=v0.0.7#000fe89df8dd5af19843dcc183866d1d39b7291a"
 dependencies = [
@@ -781,12 +761,12 @@ dependencies = [
 
 [[package]]
 name = "ejson2env"
-version = "0.0.4"
-source = "git+https://github.com/runlevel5/ejson2env-rs.git?tag=v0.0.4#81133d57dc71b94836e6c468e866cd30a0de61e3"
+version = "0.0.5"
+source = "git+https://github.com/runlevel5/ejson2env-rs.git?tag=v0.0.5#abd6c3c2a7e12598e75c49f33e7e64f737e2486b"
 dependencies = [
  "anyhow",
  "clap",
- "ejson 0.0.6",
+ "ejson",
  "once_cell",
  "regex",
  "serde_json",
@@ -804,7 +784,7 @@ dependencies = [
  "aws-sdk-kms",
  "base64",
  "clap",
- "ejson 0.0.7",
+ "ejson",
  "ejson2env",
  "serde",
  "serde_json",
@@ -828,7 +808,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1657,7 +1637,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1989,7 +1969,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
