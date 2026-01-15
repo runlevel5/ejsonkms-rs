@@ -8,9 +8,11 @@ pub mod kms;
 
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
+use std::fmt;
 use std::fs;
 use std::path::Path;
 use thiserror::Error;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use kms::{decrypt_private_key_with_kms, encrypt_private_key_with_kms, KmsError};
 
@@ -50,20 +52,22 @@ pub enum EjsonKmsError {
     MissingPrivateKeyEnc,
     #[error("unsupported file extension: {0}")]
     UnsupportedFileExtension(String),
-    #[error("IO error: {0}")]
+    #[error("file error")]
     IoError(#[from] std::io::Error),
-    #[error("JSON error: {0}")]
+    #[error("invalid JSON format")]
     JsonError(#[from] serde_json::Error),
-    #[error("YAML error: {0}")]
+    #[error("invalid YAML format")]
     YamlError(#[from] serde_yml::Error),
-    #[error("KMS error: {0}")]
+    #[error("{}", .0.user_message())]
     KmsError(#[from] KmsError),
-    #[error("EJSON error: {0}")]
+    #[error("decryption failed")]
     EjsonError(String),
 }
 
 /// Keys used in an EjsonKms file
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Security: The private_key field is zeroized on drop and redacted from Debug output
+#[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct EjsonKmsKeys {
     #[serde(rename = "_public_key")]
     pub public_key: String,
@@ -71,6 +75,17 @@ pub struct EjsonKmsKeys {
     pub private_key_enc: String,
     #[serde(skip)]
     pub private_key: String,
+}
+
+// Custom Debug implementation that redacts sensitive fields
+impl fmt::Debug for EjsonKmsKeys {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EjsonKmsKeys")
+            .field("public_key", &self.public_key)
+            .field("private_key_enc", &self.private_key_enc)
+            .field("private_key", &"[REDACTED]")
+            .finish()
+    }
 }
 
 /// Minimal structure for reading EJSON file to extract _private_key_enc

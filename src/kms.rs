@@ -6,17 +6,48 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum KmsError {
-    #[error("unable to decrypt parameter: {0}")]
+    #[error("unable to decrypt private key")]
     DecryptError(String),
-    #[error("unable to encrypt parameter: {0}")]
+    #[error("unable to encrypt private key")]
     EncryptError(String),
-    #[error("base64 decode error: {0}")]
+    #[error("invalid encrypted data format")]
     Base64DecodeError(#[from] base64::DecodeError),
 }
 
+impl KmsError {
+    /// Returns sanitized error message safe for user display
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            KmsError::DecryptError(_) => {
+                "Failed to decrypt private key. Check your AWS credentials and KMS key permissions."
+            }
+            KmsError::EncryptError(_) => {
+                "Failed to encrypt private key. Check your AWS credentials and KMS key permissions."
+            }
+            KmsError::Base64DecodeError(_) => "Invalid encrypted data format.",
+        }
+    }
+
+    /// Returns the internal error details (for logging only, not user display)
+    #[allow(dead_code)]
+    pub fn internal_details(&self) -> Option<&str> {
+        match self {
+            KmsError::DecryptError(s) | KmsError::EncryptError(s) => Some(s),
+            KmsError::Base64DecodeError(_) => None,
+        }
+    }
+}
+
 /// Creates a new KMS client with optional custom endpoint (for testing)
+///
+/// Security: The FAKE_AWSKMS_URL environment variable is only available in debug builds
+/// to prevent endpoint redirection attacks in production.
 pub async fn new_kms_client(aws_region: Option<&str>) -> KmsClient {
+    // Only allow custom KMS endpoint in debug/test builds
+    #[cfg(debug_assertions)]
     let fake_kms_endpoint = std::env::var("FAKE_AWSKMS_URL").ok();
+    #[cfg(not(debug_assertions))]
+    let fake_kms_endpoint: Option<String> = None;
 
     let mut config_loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
 

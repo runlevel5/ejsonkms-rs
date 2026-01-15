@@ -2,10 +2,13 @@
 
 use clap::{Parser, Subcommand};
 use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsOutput, FileFormat};
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 /// Manage encrypted secrets using EJSON & AWS KMS
 #[derive(Parser)]
@@ -66,6 +69,23 @@ enum Commands {
 fn fail(message: &str) -> ExitCode {
     eprintln!("error: {}", message);
     ExitCode::FAILURE
+}
+
+/// Creates a file with restrictive permissions (0600 on Unix - owner read/write only)
+/// This prevents other users from reading sensitive data written to the file.
+#[cfg(unix)]
+fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+    File::create(path)
 }
 
 #[tokio::main]
@@ -135,7 +155,7 @@ async fn decrypt_action(
 
     match output {
         Some(out_path) => {
-            let mut file = File::create(out_path)?;
+            let mut file = create_secure_file(out_path)?;
             file.write_all(&decrypted)?;
         }
         None => {
@@ -166,11 +186,13 @@ async fn keygen_action(
         FileFormat::Yaml => serde_yml::to_string(&ejson_file)?,
     };
 
-    println!("Private Key: {}", ejson_kms_keys.private_key);
+    // NOTE: Private key is intentionally NOT printed to avoid security risks.
+    // The private key is encrypted and stored in the output file as _private_key_enc.
+    // If you need the raw private key, decrypt _private_key_enc using KMS.
 
     match output {
         Some(out_path) => {
-            let mut file = File::create(out_path)?;
+            let mut file = create_secure_file(out_path)?;
             file.write_all(output_content.as_bytes())?;
         }
         None => {
