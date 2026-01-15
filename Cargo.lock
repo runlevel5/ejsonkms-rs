@@ -777,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "ejsonkms"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -792,7 +792,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.11+spec-1.1.0",
  "zeroize",
 ]
 
