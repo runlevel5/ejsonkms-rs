@@ -1,11 +1,14 @@
 //! ejsonkms CLI - Manage encrypted secrets using EJSON & AWS KMS
 
 use clap::{Parser, Subcommand};
-use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsOutput};
-use std::fs::File;
+use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsOutput, FileFormat};
+use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 /// Manage encrypted secrets using EJSON & AWS KMS
 #[derive(Parser)]
@@ -53,6 +56,10 @@ enum Commands {
         /// Suppress export statement
         #[arg(short = 'q', long = "quiet")]
         quiet: bool,
+        /// Remove the first leading underscore from variable names
+        /// (e.g., _ENVIRONMENT becomes ENVIRONMENT, __KEY becomes _KEY)
+        #[arg(long = "trim-underscore-prefix")]
+        trim_underscore_prefix: bool,
         /// AWS Region
         #[arg(long = "aws-region")]
         aws_region: Option<String>,
@@ -62,6 +69,23 @@ enum Commands {
 fn fail(message: &str) -> ExitCode {
     eprintln!("error: {}", message);
     ExitCode::FAILURE
+}
+
+/// Creates a file with restrictive permissions (0600 on Unix - owner read/write only)
+/// This prevents other users from reading sensitive data written to the file.
+#[cfg(unix)]
+fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+    File::create(path)
 }
 
 #[tokio::main]
@@ -100,9 +124,12 @@ async fn main() -> ExitCode {
         Commands::Env {
             file,
             quiet,
+            trim_underscore_prefix,
             aws_region,
         } => {
-            if let Err(e) = env_action(&file, aws_region.as_deref(), quiet).await {
+            if let Err(e) =
+                env_action(&file, aws_region.as_deref(), quiet, trim_underscore_prefix).await
+            {
                 return fail(&e.to_string());
             }
         }
@@ -128,7 +155,7 @@ async fn decrypt_action(
 
     match output {
         Some(out_path) => {
-            let mut file = File::create(out_path)?;
+            let mut file = create_secure_file(out_path)?;
             file.write_all(&decrypted)?;
         }
         None => {
@@ -147,18 +174,30 @@ async fn keygen_action(
     let ejson_kms_keys = keygen(kms_key_id, aws_region).await?;
 
     let ejson_file: EjsonKmsOutput = (&ejson_kms_keys).into();
-    let ejson_json = serde_json::to_string_pretty(&ejson_file)?;
 
-    println!("Private Key: {}", ejson_kms_keys.private_key);
+    // Determine output format from file extension (default to JSON)
+    let format = match output {
+        Some(path) => FileFormat::from_path(path)?,
+        None => FileFormat::default(),
+    };
+
+    let output_content = match format {
+        FileFormat::Json => serde_json::to_string_pretty(&ejson_file)?,
+        FileFormat::Yaml => serde_yml::to_string(&ejson_file)?,
+    };
+
+    // NOTE: Private key is intentionally NOT printed to avoid security risks.
+    // The private key is encrypted and stored in the output file as _private_key_enc.
+    // If you need the raw private key, decrypt _private_key_enc using KMS.
 
     match output {
         Some(out_path) => {
-            let mut file = File::create(out_path)?;
-            file.write_all(ejson_json.as_bytes())?;
+            let mut file = create_secure_file(out_path)?;
+            file.write_all(output_content.as_bytes())?;
         }
         None => {
             println!("EJSON File:");
-            println!("{}", ejson_json);
+            println!("{}", output_content);
         }
     }
 
@@ -169,6 +208,7 @@ async fn env_action(
     file: &PathBuf,
     aws_region: Option<&str>,
     quiet: bool,
+    trim_underscore_prefix: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Find and decrypt the private key
     let private_key_enc = find_private_key_enc(file)?;
@@ -188,6 +228,13 @@ async fn env_action(
             std::collections::BTreeMap::new()
         }
         Err(e) => return Err(format!("could not load environment from file: {}", e).into()),
+    };
+
+    // Apply underscore prefix trimming if requested
+    let env_values = if trim_underscore_prefix {
+        ejson2env::trim_underscore_prefix(&env_values)
+    } else {
+        env_values
     };
 
     // Export the environment variables
