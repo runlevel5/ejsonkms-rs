@@ -22,6 +22,7 @@ pub enum FileFormat {
     #[default]
     Json,
     Yaml,
+    Toml,
 }
 
 impl FileFormat {
@@ -30,6 +31,7 @@ impl FileFormat {
         match path.as_ref().extension().and_then(OsStr::to_str) {
             Some("eyaml") | Some("eyml") | Some("yaml") | Some("yml") => Ok(FileFormat::Yaml),
             Some("ejson") | Some("json") => Ok(FileFormat::Json),
+            Some("etoml") | Some("toml") => Ok(FileFormat::Toml),
             Some(ext) => Err(EjsonKmsError::UnsupportedFileExtension(ext.to_string())),
             None => Err(EjsonKmsError::UnsupportedFileExtension(
                 "(none)".to_string(),
@@ -42,6 +44,7 @@ impl FileFormat {
         match self {
             FileFormat::Json => "ejson",
             FileFormat::Yaml => "eyaml",
+            FileFormat::Toml => "etoml",
         }
     }
 }
@@ -58,6 +61,10 @@ pub enum EjsonKmsError {
     JsonError(#[from] serde_json::Error),
     #[error("invalid YAML format")]
     YamlError(#[from] serde_yml::Error),
+    #[error("invalid TOML format: {0}")]
+    TomlDeError(#[from] toml::de::Error),
+    #[error("invalid TOML format: {0}")]
+    TomlSerError(#[from] toml::ser::Error),
     #[error("{}", .0.user_message())]
     KmsError(#[from] KmsError),
     #[error("decryption failed")]
@@ -164,6 +171,7 @@ pub fn find_private_key_enc<P: AsRef<Path>>(ejson_file_path: P) -> Result<String
     let file: EjsonKmsFile = match format {
         FileFormat::Json => serde_json::from_str(&content)?,
         FileFormat::Yaml => serde_yml::from_str(&content)?,
+        FileFormat::Toml => toml::from_str(&content)?,
     };
 
     file.private_key_enc
@@ -217,6 +225,26 @@ mod tests {
     }
 
     #[test]
+    fn test_from_path_toml_extensions() {
+        assert_eq!(
+            FileFormat::from_path("file.toml").unwrap(),
+            FileFormat::Toml
+        );
+        assert_eq!(
+            FileFormat::from_path("file.etoml").unwrap(),
+            FileFormat::Toml
+        );
+        assert_eq!(
+            FileFormat::from_path("path/to/file.toml").unwrap(),
+            FileFormat::Toml
+        );
+        assert_eq!(
+            FileFormat::from_path("path/to/file.etoml").unwrap(),
+            FileFormat::Toml
+        );
+    }
+
+    #[test]
     fn test_from_path_unsupported_extension() {
         let err = FileFormat::from_path("file.txt").unwrap_err();
         assert!(matches!(err, EjsonKmsError::UnsupportedFileExtension(ext) if ext == "txt"));
@@ -238,6 +266,7 @@ mod tests {
     fn test_file_format_extension() {
         assert_eq!(FileFormat::Json.extension(), "ejson");
         assert_eq!(FileFormat::Yaml.extension(), "eyaml");
+        assert_eq!(FileFormat::Toml.extension(), "etoml");
     }
 
     #[test]

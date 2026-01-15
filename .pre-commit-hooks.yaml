@@ -1,9 +1,9 @@
-# Defines supported pre-commit hooks for this project. 
+# Defines supported pre-commit hooks for this project.
 
 - id: run-ejsonkms-encrypt
   name: run-ejsonkms-encrypt
-  description: Run ejsonkms encrypt on all ejson and eyaml files in your repository.
+  description: Run ejsonkms encrypt on all ejson, eyaml, and etoml files in your repository.
   entry: ejsonkms encrypt
-  language: golang
+  language: rust
   types: [file]
-  files: '\.(ejson|eyaml|eyml)$'
+  files: '\.(ejson|eyaml|eyml|etoml)$'
