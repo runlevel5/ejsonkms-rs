@@ -186,7 +186,7 @@ $ ejsonkms decrypt secrets.ejson
 }
 ```
 
-Exporting shell variables (from [ejson2env](https://github.com/Shopify/ejson2env)):
+Exporting shell variables:
 
 ```shell
 $ exports=$(ejsonkms env secrets.ejson)
@@ -194,9 +194,9 @@ $ echo $exports
 export DATABASE_PASSWORD='supersecretpassword'
 export API_KEY='sk-1234567890abcdef'
 export JWT_SECRET='my-jwt-signing-key'
-export _DATABASE_HOST='db.example.com'
-export _DATABASE_PORT='5432'
-export _APP_ENV='production'
+export DATABASE_HOST='db.example.com'
+export DATABASE_PORT='5432'
+export APP_ENV='production'
 $ eval $exports
 $ echo $DATABASE_PASSWORD
 supersecretpassword
@@ -204,29 +204,16 @@ supersecretpassword
 
 Note that only values under the `environment` key will be exported using the `env` command.
 
+When exporting keys prefixed with `_`, the first leading underscore is automatically stripped from variable names.
+This means non-secret configuration values like `_DATABASE_HOST` will be exported as `DATABASE_HOST` without the underscore prefix. Keys with multiple underscores (e.g., `__KEY`) will have only the first underscore removed (becoming `_KEY`).
+
 ### Options
 
 | Option | Description |
 |--------|-------------|
 | `-q`, `--quiet` | Suppress the `export` prefix (output: `KEY='value'`) |
-| `--trim-underscore-prefix` | Remove the first leading underscore from variable names (e.g., `_DATABASE_HOST` becomes `DATABASE_HOST`, `__KEY` becomes `_KEY`) |
 | `--aws-region` | AWS Region |
 
-### Trimming Underscore Prefix
-
-Keys prefixed with `_` (e.g., `_DATABASE_HOST`) are left **unencrypted** in the secrets file. By default, the underscore prefix is preserved when exporting. Use `--trim-underscore-prefix` to strip the first leading underscore from variable names:
-
-```shell
-$ ejsonkms env --trim-underscore-prefix secrets.ejson
-export DATABASE_PASSWORD='supersecretpassword'
-export API_KEY='sk-1234567890abcdef'
-export JWT_SECRET='my-jwt-signing-key'
-export DATABASE_HOST='db.example.com'
-export DATABASE_PORT='5432'
-export APP_ENV='production'
-```
-
-This is useful when you want non-secret configuration values like `_DATABASE_HOST` to be exported as `DATABASE_HOST` without the underscore prefix.
 
 ## pre-commit hook
 
