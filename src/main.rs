@@ -235,8 +235,11 @@ async fn env_action(
 
     // Read and extract environment variables
     // Pass empty string for keydir since we're providing the private key directly
+    // Pass true for trim_underscore_prefix to trim underscore prefix from variable names
+    // (e.g., _DATABASE_HOST becomes DATABASE_HOST, __KEY becomes _KEY)
     let file_str = file.to_str().ok_or("Invalid file path")?;
-    let env_values = ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key);
+    let env_values =
+        ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key, true);
 
     // Zeroize the decrypted private key immediately after use
     kms_decrypted_private_key.zeroize();
@@ -250,10 +253,6 @@ async fn env_action(
         }
         Err(e) => return Err(format!("could not load environment from file: {}", e).into()),
     };
-
-    // Always trim underscore prefix from variable names
-    // (e.g., _DATABASE_HOST becomes DATABASE_HOST, __KEY becomes _KEY)
-    let env_values = ejson2env::trim_underscore_prefix(&env_values);
 
     // Export the environment variables
     let mut stdout = io::stdout();
