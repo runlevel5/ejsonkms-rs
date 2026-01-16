@@ -128,8 +128,8 @@ pub async fn decrypt<P: AsRef<Path>>(
 
     // Decrypt the EJSON file using the decrypted private key
     // Pass empty string for keydir since we're providing the private key directly
-    // Pass false for trim_underscore_prefix as we don't need key prefix trimming here
-    let decrypted = ejson::decrypt_file(path, "", &kms_decrypted_private_key, false)
+    // Pass true for trim_underscore_prefix to remove leading underscore from keys
+    let decrypted = ejson::decrypt_file(path, "", &kms_decrypted_private_key, true)
         .map_err(|e| EjsonKmsError::EjsonError(e.to_string()));
 
     // Zeroize the decrypted private key immediately after use
