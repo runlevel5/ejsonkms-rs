@@ -1,6 +1,6 @@
 [package]
 name = "ejsonkms"
-version = "0.0.6"
+version = "0.0.7"
 edition = "2021"
 authors = ["Trung Lê <8@tle.id.au>"]
 description = "Manage encrypted secrets using EJSON & AWS KMS"
