@@ -238,7 +238,8 @@ async fn env_action(file: &Path, aws_region: Option<&str>, quiet: bool) -> Resul
                     // No environment key or invalid - not a fatal error, just no output
                     ejson2env::SecretEnvMap::new()
                 } else {
-                    // For non-env errors, we still return empty map but could log
+                    // Log non-env errors (decryption failures, file errors, etc.) for debugging
+                    eprintln!("warning: failed to extract environment variables: {e}");
                     ejson2env::SecretEnvMap::new()
                 }
             });
