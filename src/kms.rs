@@ -59,7 +59,7 @@ pub async fn new_kms_client(aws_region: Option<&str>) -> KmsClient {
     let mut config_loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
 
     if let Some(region) = aws_region {
-        config_loader = config_loader.region(aws_config::Region::new(region.to_owned()));
+        config_loader = config_loader.region(aws_config::Region::new(region.to_string()));
     }
 
     let config = config_loader.load().await;
