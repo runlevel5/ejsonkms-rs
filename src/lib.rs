@@ -16,6 +16,9 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub use ejson::format::{FileFormat, FormatError};
 pub use kms::{decrypt_private_key_with_kms, encrypt_private_key_with_kms, KmsError};
 
+// Re-export Zeroizing as SecretString for use by dependent crates
+pub use zeroize::Zeroizing as SecretString;
+
 #[derive(Error, Debug)]
 pub enum EjsonKmsError {
     #[error("missing _private_key_enc field")]
@@ -111,8 +114,8 @@ pub async fn keygen(
 
 /// Decrypts an EJSON file using KMS to first decrypt the private key
 ///
-/// Security: The decrypted private key is zeroized after use to prevent sensitive
-/// data from lingering in memory.
+/// Security: The decrypted private key is wrapped in Zeroizing for automatic
+/// memory cleanup when it goes out of scope.
 pub async fn decrypt<P: AsRef<Path>>(
     ejson_file_path: P,
     aws_region: Option<&str>,
@@ -122,20 +125,16 @@ pub async fn decrypt<P: AsRef<Path>>(
     // Find the encrypted private key in the file
     let private_key_enc = find_private_key_enc(path)?;
 
-    // Decrypt the private key using KMS
-    let mut kms_decrypted_private_key =
+    // Decrypt the private key using KMS (returns Zeroizing<String> for automatic cleanup)
+    let kms_decrypted_private_key =
         decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
 
     // Decrypt the EJSON file using the decrypted private key
     // Pass empty string for keydir since we're providing the private key directly
     // Pass true for trim_underscore_prefix to remove leading underscore from keys
-    let decrypted = ejson::decrypt_file(path, "", &kms_decrypted_private_key, true)
-        .map_err(|e| EjsonKmsError::EjsonError(e.to_string()));
-
-    // Zeroize the decrypted private key immediately after use
-    kms_decrypted_private_key.zeroize();
-
-    decrypted
+    // The private key is automatically zeroized when kms_decrypted_private_key is dropped
+    ejson::decrypt_file(path, "", &kms_decrypted_private_key, true)
+        .map_err(|e| EjsonKmsError::EjsonError(e.to_string()))
 }
 
 /// Finds the _private_key_enc field in an EJSON file (supports JSON and YAML)

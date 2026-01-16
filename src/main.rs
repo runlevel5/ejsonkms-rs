@@ -6,7 +6,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
-use zeroize::Zeroize;
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -228,21 +227,19 @@ async fn env_action(
     aws_region: Option<&str>,
     quiet: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Find and decrypt the private key
+    // Find and decrypt the private key (returns Zeroizing<String> for automatic cleanup)
     let private_key_enc = find_private_key_enc(file)?;
-    let mut kms_decrypted_private_key =
+    let kms_decrypted_private_key =
         ejsonkms::decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
 
     // Read and extract environment variables
     // Pass empty string for keydir since we're providing the private key directly
     // Pass true for trim_underscore_prefix to trim underscore prefix from variable names
     // (e.g., _DATABASE_HOST becomes DATABASE_HOST, __KEY becomes _KEY)
+    // The private key is automatically zeroized when kms_decrypted_private_key is dropped
     let file_str = file.to_str().ok_or("Invalid file path")?;
     let env_values =
         ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key, true);
-
-    // Zeroize the decrypted private key immediately after use
-    kms_decrypted_private_key.zeroize();
 
     // Handle env errors gracefully (match Go behavior)
     let env_values = match env_values {
