@@ -3,7 +3,7 @@
 use aws_sdk_kms::Client as KmsClient;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use thiserror::Error;
-use zeroize::Zeroize;
+use zeroize::Zeroizing;
 
 #[derive(Error, Debug)]
 pub enum KmsError {
@@ -69,12 +69,12 @@ pub async fn new_kms_client(aws_region: Option<&str>) -> KmsClient {
 
 /// Decrypts a base64-encoded KMS ciphertext and returns the plaintext private key
 ///
-/// Security: The plaintext bytes are zeroized after conversion to prevent sensitive
-/// data from lingering in memory.
+/// Security: The returned Zeroizing<String> automatically zeroizes memory when dropped,
+/// preventing sensitive data from lingering in memory.
 pub async fn decrypt_private_key_with_kms(
     private_key_enc: &str,
     aws_region: Option<&str>,
-) -> Result<String, KmsError> {
+) -> Result<Zeroizing<String>, KmsError> {
     let kms_client = new_kms_client(aws_region).await;
 
     let encrypted_value = BASE64.decode(private_key_enc)?;
@@ -90,15 +90,11 @@ pub async fn decrypt_private_key_with_kms(
         .plaintext()
         .ok_or_else(|| KmsError::DecryptError("no plaintext in response".to_string()))?;
 
-    // Copy the plaintext bytes and immediately zeroize the copy after conversion
-    let mut plaintext_bytes = plaintext.as_ref().to_vec();
-    let result = String::from_utf8(plaintext_bytes.clone())
-        .map_err(|e| KmsError::DecryptError(format!("invalid UTF-8: {}", e)));
+    // Convert to Zeroizing<String> for automatic cleanup when dropped
+    let plaintext_str = String::from_utf8(plaintext.as_ref().to_vec())
+        .map_err(|e| KmsError::DecryptError(format!("invalid UTF-8: {}", e)))?;
 
-    // Zeroize the intermediate byte buffer to prevent sensitive data from lingering in memory
-    plaintext_bytes.zeroize();
-
-    result
+    Ok(Zeroizing::new(plaintext_str))
 }
 
 /// Encrypts a private key using AWS KMS and returns the base64-encoded ciphertext

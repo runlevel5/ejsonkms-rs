@@ -4,9 +4,8 @@ use clap::{Parser, Subcommand};
 use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsOutput, FileFormat};
 use std::fs::{File, OpenOptions};
 use std::io::{self, IsTerminal, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use zeroize::Zeroize;
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
@@ -71,7 +70,7 @@ fn fail(message: &str) -> ExitCode {
 /// Creates a file with restrictive permissions (0600 on Unix - owner read/write only)
 /// This prevents other users from reading sensitive data written to the file.
 #[cfg(unix)]
-fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+fn create_secure_file(path: &Path) -> std::io::Result<File> {
     OpenOptions::new()
         .write(true)
         .create(true)
@@ -83,7 +82,7 @@ fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
 /// Creates a file with restrictive permissions on Windows.
 /// Uses SECURITY_ATTRIBUTES to restrict access to the current user only.
 #[cfg(windows)]
-fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+fn create_secure_file(path: &Path) -> std::io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
     // FILE_ATTRIBUTE_NORMAL with restricted sharing mode
     // Note: For full security on Windows, consider using the windows-acl crate
@@ -97,7 +96,7 @@ fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn create_secure_file(path: &std::path::Path) -> std::io::Result<File> {
+fn create_secure_file(path: &Path) -> std::io::Result<File> {
     // Fallback for other platforms - warn user about potential security issue
     eprintln!("warning: secure file permissions not implemented for this platform");
     File::create(path)
@@ -110,8 +109,7 @@ async fn main() -> ExitCode {
     match cli.command {
         Commands::Encrypt { files } => {
             if let Err(e) = encrypt_action(&files) {
-                eprintln!("Encryption failed: {}", e);
-                return ExitCode::FAILURE;
+                return fail(&format!("Encryption failed: {}", e));
             }
         }
         Commands::Decrypt {
@@ -120,8 +118,7 @@ async fn main() -> ExitCode {
             aws_region,
         } => {
             if let Err(e) = decrypt_action(&file, output.as_deref(), aws_region.as_deref()).await {
-                eprintln!("Decryption failed: {}", e);
-                return ExitCode::FAILURE;
+                return fail(&format!("Decryption failed: {}", e));
             }
         }
         Commands::Keygen {
@@ -132,8 +129,7 @@ async fn main() -> ExitCode {
             if let Err(e) =
                 keygen_action(&kms_key_id, aws_region.as_deref(), output.as_deref()).await
             {
-                eprintln!("Key generation failed: {}", e);
-                return ExitCode::FAILURE;
+                return fail(&format!("Key generation failed: {}", e));
             }
         }
         Commands::Env {
@@ -142,7 +138,7 @@ async fn main() -> ExitCode {
             aws_region,
         } => {
             if let Err(e) = env_action(&file, aws_region.as_deref(), quiet).await {
-                return fail(&e.to_string());
+                return fail(&format!("Environment export failed: {}", e));
             }
         }
     }
@@ -159,8 +155,8 @@ fn encrypt_action(files: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn decrypt_action(
-    file: &PathBuf,
-    output: Option<&std::path::Path>,
+    file: &Path,
+    output: Option<&Path>,
     aws_region: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let decrypted = decrypt(file, aws_region).await?;
@@ -187,17 +183,17 @@ async fn decrypt_action(
 async fn keygen_action(
     kms_key_id: &str,
     aws_region: Option<&str>,
-    output: Option<&std::path::Path>,
+    output: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ejson_kms_keys = keygen(kms_key_id, aws_region).await?;
 
-    let ejson_file: EjsonKmsOutput = (&ejson_kms_keys).into();
+    let ejson_file = EjsonKmsOutput::from(&ejson_kms_keys);
 
     // Determine output format from file extension (default to JSON)
-    let format = match output {
-        Some(path) => FileFormat::from_path(path)?,
-        None => FileFormat::default(),
-    };
+    let format = output
+        .map(FileFormat::from_path)
+        .transpose()?
+        .unwrap_or_default();
 
     let output_content = match format {
         FileFormat::Json => serde_json::to_string_pretty(&ejson_file)?,
@@ -224,36 +220,33 @@ async fn keygen_action(
 }
 
 async fn env_action(
-    file: &PathBuf,
+    file: &Path,
     aws_region: Option<&str>,
     quiet: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Find and decrypt the private key
+    // Find and decrypt the private key (returns Zeroizing<String> for automatic cleanup)
     let private_key_enc = find_private_key_enc(file)?;
-    let mut kms_decrypted_private_key =
+    let kms_decrypted_private_key =
         ejsonkms::decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
 
     // Read and extract environment variables
     // Pass empty string for keydir since we're providing the private key directly
-    let file_str = file.to_str().ok_or("Invalid file path")?;
-    let env_values = ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key);
-
-    // Zeroize the decrypted private key immediately after use
-    kms_decrypted_private_key.zeroize();
+    // Pass true for trim_underscore_prefix to trim underscore prefix from variable names
+    // (e.g., _DATABASE_HOST becomes DATABASE_HOST, __KEY becomes _KEY)
+    // The private key is automatically zeroized when kms_decrypted_private_key is dropped
+    let file_str = file.to_str().ok_or("Invalid UTF-8 in file path")?;
+    let env_values =
+        ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key, true);
 
     // Handle env errors gracefully (match Go behavior)
     let env_values = match env_values {
         Ok(values) => values,
         Err(e) if ejson2env::is_env_error(&e) => {
             // No environment key or invalid - not a fatal error, just no output
-            std::collections::BTreeMap::new()
+            ejson2env::SecretEnvMap::new()
         }
         Err(e) => return Err(format!("could not load environment from file: {}", e).into()),
     };
-
-    // Always trim underscore prefix from variable names
-    // (e.g., _DATABASE_HOST becomes DATABASE_HOST, __KEY becomes _KEY)
-    let env_values = ejson2env::trim_underscore_prefix(&env_values);
 
     // Export the environment variables
     let mut stdout = io::stdout();
