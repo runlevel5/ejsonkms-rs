@@ -246,7 +246,7 @@ async fn env_action(
         Ok(values) => values,
         Err(e) if ejson2env::is_env_error(&e) => {
             // No environment key or invalid - not a fatal error, just no output
-            std::collections::BTreeMap::new()
+            ejson2env::SecretEnvMap::new()
         }
         Err(e) => return Err(format!("could not load environment from file: {}", e).into()),
     };
