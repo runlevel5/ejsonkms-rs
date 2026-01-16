@@ -1,14 +1,38 @@
 //! ejsonkms CLI - Manage encrypted secrets using EJSON & AWS KMS
 
 use clap::{Parser, Subcommand};
-use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsOutput, FileFormat};
+use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsError, EjsonKmsOutput, FileFormat};
 use std::fs::{File, OpenOptions};
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use thiserror::Error;
 
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt;
+
+/// CLI-specific errors that wrap library errors with context
+#[derive(Error, Debug)]
+enum CliError {
+    #[error("encryption failed: {0}")]
+    Encryption(#[from] ejson::EjsonError),
+    #[error("decryption failed: {0}")]
+    Decryption(#[from] EjsonKmsError),
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    #[error("JSON serialization error: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("YAML serialization error: {0}")]
+    Yaml(#[from] serde_yml::Error),
+    #[error("TOML serialization error: {0}")]
+    Toml(#[from] toml::ser::Error),
+    #[error("unsupported file format: {0}")]
+    Format(#[from] ejsonkms::FormatError),
+    #[error("KMS error: {}", .0.user_message())]
+    Kms(#[from] ejsonkms::KmsError),
+    #[error("invalid UTF-8 in file path")]
+    InvalidPath,
+}
 
 /// Manage encrypted secrets using EJSON & AWS KMS
 #[derive(Parser)]
@@ -62,8 +86,8 @@ enum Commands {
     },
 }
 
-fn fail(message: &str) -> ExitCode {
-    eprintln!("error: {}", message);
+fn fail(err: impl std::fmt::Display) -> ExitCode {
+    eprintln!("error: {err}");
     ExitCode::FAILURE
 }
 
@@ -106,50 +130,35 @@ fn create_secure_file(path: &Path) -> std::io::Result<File> {
 async fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    match cli.command {
-        Commands::Encrypt { files } => {
-            if let Err(e) = encrypt_action(&files) {
-                return fail(&format!("Encryption failed: {}", e));
-            }
-        }
+    let result = match cli.command {
+        Commands::Encrypt { files } => encrypt_action(&files).map_err(Into::into),
         Commands::Decrypt {
             file,
             output,
             aws_region,
-        } => {
-            if let Err(e) = decrypt_action(&file, output.as_deref(), aws_region.as_deref()).await {
-                return fail(&format!("Decryption failed: {}", e));
-            }
-        }
+        } => decrypt_action(&file, output.as_deref(), aws_region.as_deref()).await,
         Commands::Keygen {
             kms_key_id,
             aws_region,
             output,
-        } => {
-            if let Err(e) =
-                keygen_action(&kms_key_id, aws_region.as_deref(), output.as_deref()).await
-            {
-                return fail(&format!("Key generation failed: {}", e));
-            }
-        }
+        } => keygen_action(&kms_key_id, aws_region.as_deref(), output.as_deref()).await,
         Commands::Env {
             file,
             quiet,
             aws_region,
-        } => {
-            if let Err(e) = env_action(&file, aws_region.as_deref(), quiet).await {
-                return fail(&format!("Environment export failed: {}", e));
-            }
-        }
-    }
+        } => env_action(&file, aws_region.as_deref(), quiet).await,
+    };
 
-    ExitCode::SUCCESS
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => fail(e),
+    }
 }
 
-fn encrypt_action(files: &[PathBuf]) -> Result<(), Box<dyn std::error::Error>> {
+fn encrypt_action(files: &[PathBuf]) -> Result<(), ejson::EjsonError> {
     for file_path in files {
         let n = ejson::encrypt_file_in_place(file_path)?;
-        println!("Wrote {} bytes to {}.", n, file_path.display());
+        println!("Wrote {n} bytes to {}.", file_path.display());
     }
     Ok(())
 }
@@ -158,23 +167,18 @@ async fn decrypt_action(
     file: &Path,
     output: Option<&Path>,
     aws_region: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     let decrypted = decrypt(file, aws_region).await?;
 
-    match output {
-        Some(out_path) => {
-            let mut file = create_secure_file(out_path)?;
-            file.write_all(&decrypted)?;
+    if let Some(out_path) = output {
+        let mut file = create_secure_file(out_path)?;
+        file.write_all(&decrypted)?;
+    } else {
+        // Security warning: warn users when outputting secrets to a terminal
+        if io::stdout().is_terminal() {
+            eprintln!("warning: writing secrets to terminal; consider using -o to write to a file");
         }
-        None => {
-            // Security warning: warn users when outputting secrets to a terminal
-            if io::stdout().is_terminal() {
-                eprintln!(
-                    "warning: writing secrets to terminal; consider using -o to write to a file"
-                );
-            }
-            io::stdout().write_all(&decrypted)?;
-        }
+        io::stdout().write_all(&decrypted)?;
     }
 
     Ok(())
@@ -184,9 +188,8 @@ async fn keygen_action(
     kms_key_id: &str,
     aws_region: Option<&str>,
     output: Option<&Path>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), CliError> {
     let ejson_kms_keys = keygen(kms_key_id, aws_region).await?;
-
     let ejson_file = EjsonKmsOutput::from(&ejson_kms_keys);
 
     // Determine output format from file extension (default to JSON)
@@ -205,25 +208,18 @@ async fn keygen_action(
     // The private key is encrypted and stored in the output file as _private_key_enc.
     // If you need the raw private key, decrypt _private_key_enc using KMS.
 
-    match output {
-        Some(out_path) => {
-            let mut file = create_secure_file(out_path)?;
-            file.write_all(output_content.as_bytes())?;
-        }
-        None => {
-            println!("EJSON File:");
-            println!("{}", output_content);
-        }
+    if let Some(out_path) = output {
+        let mut file = create_secure_file(out_path)?;
+        file.write_all(output_content.as_bytes())?;
+    } else {
+        println!("EJSON File:");
+        println!("{output_content}");
     }
 
     Ok(())
 }
 
-async fn env_action(
-    file: &Path,
-    aws_region: Option<&str>,
-    quiet: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn env_action(file: &Path, aws_region: Option<&str>, quiet: bool) -> Result<(), CliError> {
     // Find and decrypt the private key (returns Zeroizing<String> for automatic cleanup)
     let private_key_enc = find_private_key_enc(file)?;
     let kms_decrypted_private_key =
@@ -234,19 +230,19 @@ async fn env_action(
     // Pass true for trim_underscore_prefix to trim underscore prefix from variable names
     // (e.g., _DATABASE_HOST becomes DATABASE_HOST, __KEY becomes _KEY)
     // The private key is automatically zeroized when kms_decrypted_private_key is dropped
-    let file_str = file.to_str().ok_or("Invalid UTF-8 in file path")?;
+    let file_str = file.to_str().ok_or(CliError::InvalidPath)?;
     let env_values =
-        ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key, true);
-
-    // Handle env errors gracefully (match Go behavior)
-    let env_values = match env_values {
-        Ok(values) => values,
-        Err(e) if ejson2env::is_env_error(&e) => {
-            // No environment key or invalid - not a fatal error, just no output
-            ejson2env::SecretEnvMap::new()
-        }
-        Err(e) => return Err(format!("could not load environment from file: {}", e).into()),
-    };
+        ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key, true)
+            .unwrap_or_else(|e| {
+                if ejson2env::is_env_error(&e) {
+                    // No environment key or invalid - not a fatal error, just no output
+                    ejson2env::SecretEnvMap::new()
+                } else {
+                    // Log non-env errors (decryption failures, file errors, etc.) for debugging
+                    eprintln!("warning: failed to extract environment variables: {e}");
+                    ejson2env::SecretEnvMap::new()
+                }
+            });
 
     // Export the environment variables
     let mut stdout = io::stdout();

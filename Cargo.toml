@@ -1,6 +1,6 @@
 [package]
 name = "ejsonkms"
-version = "0.0.6"
+version = "0.0.7"
 edition = "2021"
 authors = ["Trung Lê <8@tle.id.au>"]
 description = "Manage encrypted secrets using EJSON & AWS KMS"
@@ -19,8 +19,8 @@ path = "src/lib.rs"
 
 [dependencies]
 # EJSON libraries
-ejson = { git = "https://github.com/runlevel5/ejson-rs.git", tag = "v0.0.9" }
-ejson2env = { git = "https://github.com/runlevel5/ejson2env-rs.git", tag = "v0.0.9" }
+ejson = { git = "https://github.com/runlevel5/ejson-rs.git", tag = "v0.0.10" }
+ejson2env = { git = "https://github.com/runlevel5/ejson2env-rs.git", tag = "v0.0.10" }
 
 # AWS SDK
 aws-config = "1.8"
@@ -43,7 +43,6 @@ base64 = "0.22"
 
 # Error handling
 thiserror = "2.0"
-anyhow = "1.0"
 
 # Security
 zeroize = { version = "1.8", features = ["derive"] }

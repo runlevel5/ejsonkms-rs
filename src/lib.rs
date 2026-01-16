@@ -3,47 +3,65 @@
 //! This library combines EJSON (encrypted JSON) with AWS KMS for secure secret management.
 //! The private key used for EJSON decryption is encrypted with KMS and stored in the EJSON
 //! file itself, allowing secrets to be safely committed to version control.
+//!
+//! # Example
+//!
+//! ```no_run
+//! use ejsonkms::{decrypt, keygen};
+//!
+//! # async fn example() -> Result<(), ejsonkms::EjsonKmsError> {
+//! // Generate a new keypair
+//! let keys = keygen("alias/my-kms-key", Some("us-east-1")).await?;
+//!
+//! // Decrypt an existing EJSON file
+//! let decrypted = decrypt("secrets.ejson", Some("us-east-1")).await?;
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod kms;
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::fs;
 use std::path::Path;
+use std::{fmt, fs};
 use thiserror::Error;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use ejson::format::{FileFormat, FormatError};
 pub use kms::{decrypt_private_key_with_kms, encrypt_private_key_with_kms, KmsError};
 
-// Re-export Zeroizing as SecretString for use by dependent crates
+/// A type alias for sensitive strings that are automatically zeroed on drop.
 pub use zeroize::Zeroizing as SecretString;
 
+/// Errors that can occur when working with EJSON files and KMS.
 #[derive(Error, Debug)]
 pub enum EjsonKmsError {
     #[error("missing _private_key_enc field")]
     MissingPrivateKeyEnc,
     #[error("{0}")]
     FormatError(#[from] FormatError),
-    #[error("file error")]
-    IoError(#[from] std::io::Error),
-    #[error("invalid JSON format")]
-    JsonError(#[from] serde_json::Error),
-    #[error("invalid YAML format")]
-    YamlError(#[from] serde_yml::Error),
+    #[error("file error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("invalid JSON format: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("invalid YAML format: {0}")]
+    Yaml(#[from] serde_yml::Error),
     #[error("invalid TOML format: {0}")]
-    TomlDeError(#[from] toml::de::Error),
+    TomlDe(#[from] toml::de::Error),
     #[error("invalid TOML format: {0}")]
-    TomlSerError(#[from] toml::ser::Error),
+    TomlSer(#[from] toml::ser::Error),
     #[error("{}", .0.user_message())]
-    KmsError(#[from] KmsError),
-    #[error("decryption failed")]
-    EjsonError(String),
+    Kms(#[from] KmsError),
+    #[error("EJSON decryption failed: {0}")]
+    Ejson(String),
 }
 
-/// Keys used in an EjsonKms file
+/// Keys used in an EjsonKms file.
 ///
-/// Security: The private_key field is zeroized on drop and redacted from Debug output
+/// # Security
+///
+/// The `private_key` field is zeroized on drop and redacted from Debug output
+/// to prevent accidental exposure in logs.
 #[derive(Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct EjsonKmsKeys {
     #[serde(rename = "_public_key")]
@@ -54,7 +72,6 @@ pub struct EjsonKmsKeys {
     pub private_key: String,
 }
 
-// Custom Debug implementation that redacts sensitive fields
 impl fmt::Debug for EjsonKmsKeys {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("EjsonKmsKeys")
@@ -65,16 +82,18 @@ impl fmt::Debug for EjsonKmsKeys {
     }
 }
 
-/// Minimal structure for reading EJSON file to extract _private_key_enc
+/// Minimal structure for reading EJSON file to extract `_private_key_enc`.
 #[derive(Debug, Deserialize)]
 struct EjsonKmsFile {
     #[serde(rename = "_private_key_enc")]
     private_key_enc: Option<String>,
 }
 
-/// Output structure for keygen (matches the Go version)
+/// Output structure for keygen command.
 ///
-/// Security: Contains only encrypted/public data, but implements Zeroize for defense in depth
+/// # Security
+///
+/// Contains only encrypted/public data, but implements `Zeroize` for defense in depth.
 #[derive(Debug, Serialize, Zeroize, ZeroizeOnDrop)]
 pub struct EjsonKmsOutput {
     #[serde(rename = "_public_key")]
@@ -92,16 +111,24 @@ impl From<&EjsonKmsKeys> for EjsonKmsOutput {
     }
 }
 
-/// Generates a new EJSON keypair with the private key encrypted by KMS
+/// Generates a new EJSON keypair with the private key encrypted by KMS.
+///
+/// # Arguments
+///
+/// * `kms_key_id` - The KMS key ID or alias to encrypt the private key with
+/// * `aws_region` - Optional AWS region override
+///
+/// # Returns
+///
+/// Returns an [`EjsonKmsKeys`] containing the public key, encrypted private key,
+/// and the raw private key (for immediate use before zeroization).
 pub async fn keygen(
     kms_key_id: &str,
     aws_region: Option<&str>,
 ) -> Result<EjsonKmsKeys, EjsonKmsError> {
-    // Generate a new EJSON keypair
     let (public_key, private_key) =
-        ejson::generate_keypair().map_err(|e| EjsonKmsError::EjsonError(e.to_string()))?;
+        ejson::generate_keypair().map_err(|e| EjsonKmsError::Ejson(e.to_string()))?;
 
-    // Encrypt the private key with KMS
     let private_key_enc =
         encrypt_private_key_with_kms(&private_key, kms_key_id, aws_region).await?;
 
@@ -112,32 +139,38 @@ pub async fn keygen(
     })
 }
 
-/// Decrypts an EJSON file using KMS to first decrypt the private key
+/// Decrypts an EJSON file using KMS to first decrypt the private key.
 ///
-/// Security: The decrypted private key is wrapped in Zeroizing for automatic
+/// # Security
+///
+/// The decrypted private key is wrapped in [`Zeroizing`](zeroize::Zeroizing) for automatic
 /// memory cleanup when it goes out of scope.
+///
+/// # Arguments
+///
+/// * `ejson_file_path` - Path to the EJSON file to decrypt
+/// * `aws_region` - Optional AWS region override
 pub async fn decrypt<P: AsRef<Path>>(
     ejson_file_path: P,
     aws_region: Option<&str>,
 ) -> Result<Vec<u8>, EjsonKmsError> {
     let path = ejson_file_path.as_ref();
 
-    // Find the encrypted private key in the file
     let private_key_enc = find_private_key_enc(path)?;
-
-    // Decrypt the private key using KMS (returns Zeroizing<String> for automatic cleanup)
     let kms_decrypted_private_key =
         decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
 
-    // Decrypt the EJSON file using the decrypted private key
-    // Pass empty string for keydir since we're providing the private key directly
-    // Pass true for trim_underscore_prefix to remove leading underscore from keys
-    // The private key is automatically zeroized when kms_decrypted_private_key is dropped
+    // Decrypt the EJSON file using the decrypted private key.
+    // Pass empty string for keydir since we're providing the private key directly.
+    // Pass true for trim_underscore_prefix to remove leading underscore from keys.
+    // The private key is automatically zeroized when kms_decrypted_private_key is dropped.
     ejson::decrypt_file(path, "", &kms_decrypted_private_key, true)
-        .map_err(|e| EjsonKmsError::EjsonError(e.to_string()))
+        .map_err(|e| EjsonKmsError::Ejson(e.to_string()))
 }
 
-/// Finds the _private_key_enc field in an EJSON file (supports JSON and YAML)
+/// Finds the `_private_key_enc` field in an EJSON file.
+///
+/// Supports JSON, YAML, and TOML formats based on file extension.
 pub fn find_private_key_enc<P: AsRef<Path>>(ejson_file_path: P) -> Result<String, EjsonKmsError> {
     let path = ejson_file_path.as_ref();
     let content = fs::read_to_string(path)?;
