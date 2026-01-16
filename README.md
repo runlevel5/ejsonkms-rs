@@ -31,7 +31,7 @@ cp ./target/release/ejsonkms ~/.local/bin/
 
 ## Usage
 
-Generating an EJSON file:
+#### Generating an EJSON file:
 
 ```shell
 $ ejsonkms keygen --aws-region us-east-1 --kms-key-id bc436485-5092-42b8-92a3-0aa8b93536dc -o secrets.ejson
@@ -53,7 +53,7 @@ _public_key: 6b8280f86aff5f48773f63d60e655e2f3dd0dd7c14f5fecb5df22936e5a3be52
 _private_key_enc: S2Fybjphd3M6a21zOnVzLWVhc3QtMToxMTExMjIyMjMzMzM6a2V5L2JjNDM2NDg1LTUwOTItNDJiOC05MmEzLTBhYThiOTM1MzZkYwAAAAAycRX5OBx6xGuYOPAmDJ1FombB1lFybMP42s7PGmoa24bAesPMMZtI9V0w0p0lEgLeeSvYdsPuoPROa4bwnQxJB28eC6fHgfWgY7jgDWY9uP/tgzuWL3zuIaq+9Q==
 ```
 
-Encrypting:
+#### Encrypting:
 
 ```shell
 $ ejsonkms encrypt secrets.ejson
@@ -108,6 +108,46 @@ Notice that:
 - `DATABASE_PASSWORD`, `API_KEY`, and `JWT_SECRET` are now encrypted (values starting with `EJ[...`)
 - `_DATABASE_HOST`, `_DATABASE_PORT`, and `_APP_ENV` remain in plaintext because they have the `_` prefix
 
+
+#### Decrypting:
+
+```shell
+$ ejsonkms decrypt secrets.ejson
+{
+  "_public_key": "6b8280f86aff5f48773f63d60e655e2f3dd0dd7c14f5fecb5df22936e5a3be52",
+  "_private_key_enc": "S2Fybjphd3M6a21zOnVzLWVhc3QtMToxMTExMjIyMjMzMzM6a2V5L2JjNDM2NDg1LTUwOTItNDJiOC05MmEzLTBhYThiOTM1MzZkYwAAAAAycRX5OBx6xGuYOPAmDJ1FombB1lFybMP42s7PGmoa24bAesPMMZtI9V0w0p0lEgLeeSvYdsPuoPROa4bwnQxJB28eC6fHgfWgY7jgDWY9uP/tgzuWL3zuIaq+9Q==",
+  "environment": {
+    "DATABASE_PASSWORD": "supersecretpassword",
+    "API_KEY": "sk-1234567890abcdef",
+    "JWT_SECRET": "my-jwt-signing-key",
+    "_DATABASE_HOST": "db.example.com",
+    "_DATABASE_PORT": "5432",
+    "_APP_ENV": "production"
+  }
+}
+```
+
+#### Exporting shell variables:
+
+```shell
+$ exports=$(ejsonkms env secrets.ejson)
+$ echo $exports
+export DATABASE_PASSWORD='supersecretpassword'
+export API_KEY='sk-1234567890abcdef'
+export JWT_SECRET='my-jwt-signing-key'
+export DATABASE_HOST='db.example.com'
+export DATABASE_PORT='5432'
+export APP_ENV='production'
+$ eval $exports
+$ echo $DATABASE_PASSWORD
+supersecretpassword
+```
+
+Note that only values under the `environment` key will be exported using the `env` command.
+
+When exporting keys prefixed with `_`, the first leading underscore is automatically stripped from variable names.
+This means non-secret configuration values like `_DATABASE_HOST` will be exported as `DATABASE_HOST` without the underscore prefix. Keys with multiple underscores (e.g., `__KEY`) will have only the first underscore removed (becoming `_KEY`).
+
 ### YAML Format Example
 
 The same secrets can be stored in YAML format:
@@ -135,7 +175,7 @@ $ ejsonkms env secrets.eyaml
 
 ### TOML Format Example
 
-To generate a TOML file, use a `.etoml` or `.toml` extension:
+To generate a ETOML file, use a `.etoml` or `.toml` extension:
 
 ```shell
 $ ejsonkms keygen --aws-region us-east-1 --kms-key-id bc436485-5092-42b8-92a3-0aa8b93536dc -o secrets.etoml
@@ -167,53 +207,6 @@ $ ejsonkms encrypt secrets.etoml
 $ ejsonkms decrypt secrets.etoml
 $ ejsonkms env secrets.etoml
 ```
-
-Decrypting:
-
-```shell
-$ ejsonkms decrypt secrets.ejson
-{
-  "_public_key": "6b8280f86aff5f48773f63d60e655e2f3dd0dd7c14f5fecb5df22936e5a3be52",
-  "_private_key_enc": "S2Fybjphd3M6a21zOnVzLWVhc3QtMToxMTExMjIyMjMzMzM6a2V5L2JjNDM2NDg1LTUwOTItNDJiOC05MmEzLTBhYThiOTM1MzZkYwAAAAAycRX5OBx6xGuYOPAmDJ1FombB1lFybMP42s7PGmoa24bAesPMMZtI9V0w0p0lEgLeeSvYdsPuoPROa4bwnQxJB28eC6fHgfWgY7jgDWY9uP/tgzuWL3zuIaq+9Q==",
-  "environment": {
-    "DATABASE_PASSWORD": "supersecretpassword",
-    "API_KEY": "sk-1234567890abcdef",
-    "JWT_SECRET": "my-jwt-signing-key",
-    "_DATABASE_HOST": "db.example.com",
-    "_DATABASE_PORT": "5432",
-    "_APP_ENV": "production"
-  }
-}
-```
-
-Exporting shell variables:
-
-```shell
-$ exports=$(ejsonkms env secrets.ejson)
-$ echo $exports
-export DATABASE_PASSWORD='supersecretpassword'
-export API_KEY='sk-1234567890abcdef'
-export JWT_SECRET='my-jwt-signing-key'
-export DATABASE_HOST='db.example.com'
-export DATABASE_PORT='5432'
-export APP_ENV='production'
-$ eval $exports
-$ echo $DATABASE_PASSWORD
-supersecretpassword
-```
-
-Note that only values under the `environment` key will be exported using the `env` command.
-
-When exporting keys prefixed with `_`, the first leading underscore is automatically stripped from variable names.
-This means non-secret configuration values like `_DATABASE_HOST` will be exported as `DATABASE_HOST` without the underscore prefix. Keys with multiple underscores (e.g., `__KEY`) will have only the first underscore removed (becoming `_KEY`).
-
-### Options
-
-| Option | Description |
-|--------|-------------|
-| `-q`, `--quiet` | Suppress the `export` prefix (output: `KEY='value'`) |
-| `--aws-region` | AWS Region |
-
 
 ## pre-commit hook
 
