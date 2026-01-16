@@ -116,6 +116,8 @@ $ ejsonkms decrypt secrets.ejson
 {
   "_public_key": "6b8280f86aff5f48773f63d60e655e2f3dd0dd7c14f5fecb5df22936e5a3be52",
   "_private_key_enc": "S2Fybjphd3M6a21zOnVzLWVhc3QtMToxMTExMjIyMjMzMzM6a2V5L2JjNDM2NDg1LTUwOTItNDJiOC05MmEzLTBhYThiOTM1MzZkYwAAAAAycRX5OBx6xGuYOPAmDJ1FombB1lFybMP42s7PGmoa24bAesPMMZtI9V0w0p0lEgLeeSvYdsPuoPROa4bwnQxJB28eC6fHgfWgY7jgDWY9uP/tgzuWL3zuIaq+9Q==",
+  "secret_1": "supersecretpassword",
+  "_non_secret_1": "cleartext",
   "environment": {
     "DATABASE_PASSWORD": "supersecretpassword",
     "API_KEY": "sk-1234567890abcdef",
