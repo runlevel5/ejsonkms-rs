@@ -240,8 +240,8 @@ environment:
         ejson::decrypt_file(file.path(), "", &private_key, true).expect("Failed to decrypt file");
 
     let decrypted_str = String::from_utf8(decrypted).expect("Invalid UTF-8");
-    let parsed: serde_yml::Value =
-        serde_yml::from_str(&decrypted_str).expect("Failed to parse decrypted YAML");
+    let parsed: serde_norway::Value =
+        serde_norway::from_str(&decrypted_str).expect("Failed to parse decrypted YAML");
 
     // Verify the environment keys have been trimmed
     let env = parsed

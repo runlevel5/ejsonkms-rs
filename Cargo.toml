@@ -19,8 +19,8 @@ path = "src/lib.rs"
 
 [dependencies]
 # EJSON libraries
-ejson = { git = "https://github.com/runlevel5/ejson-rs.git", tag = "v0.0.10" }
-ejson2env = { git = "https://github.com/runlevel5/ejson2env-rs.git", tag = "v0.0.10" }
+ejson = { git = "https://github.com/runlevel5/ejson-rs.git", tag = "v0.0.14" }
+ejson2env = { git = "https://github.com/runlevel5/ejson2env-rs.git", tag = "v0.0.11" }
 
 # AWS SDK
 aws-config = "1.8"
@@ -35,7 +35,7 @@ clap = { version = "4.5", features = ["derive"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yml = "0.0.12"
+serde_norway = "0.9"
 toml = "0.9"
 
 # Encoding
