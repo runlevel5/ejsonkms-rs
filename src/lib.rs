@@ -7,14 +7,26 @@
 //! # Example
 //!
 //! ```no_run
-//! use ejsonkms::{decrypt, keygen};
+//! use ejsonkms::{decrypt, decrypt_typed, keygen};
 //!
 //! # async fn example() -> Result<(), ejsonkms::EjsonKmsError> {
 //! // Generate a new keypair
 //! let keys = keygen("alias/my-kms-key", Some("us-east-1")).await?;
 //!
-//! // Decrypt an existing EJSON file
+//! // Decrypt an existing EJSON file (returns raw bytes)
 //! let decrypted = decrypt("secrets.ejson", Some("us-east-1")).await?;
+//!
+//! // Or use the typed API for format-agnostic access
+//! let content = decrypt_typed("secrets.ejson", Some("us-east-1")).await?;
+//! if let Some(env) = content.get("environment") {
+//!     if let Some(map) = env.as_string_map() {
+//!         for (key, value) in map {
+//!             if let Some(v) = value.as_str() {
+//!                 println!("{}={}", key, v);
+//!             }
+//!         }
+//!     }
+//! }
 //! # Ok(())
 //! # }
 //! ```
@@ -28,6 +40,7 @@ use thiserror::Error;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 pub use ejson::format::{FileFormat, FormatError};
+pub use ejson::{DecryptedContent, DecryptedValue};
 pub use kms::{decrypt_private_key_with_kms, encrypt_private_key_with_kms, KmsError};
 
 /// A type alias for sensitive strings that are automatically zeroed on drop.
@@ -45,7 +58,7 @@ pub enum EjsonKmsError {
     #[error("invalid JSON format: {0}")]
     Json(#[from] serde_json::Error),
     #[error("invalid YAML format: {0}")]
-    Yaml(#[from] serde_yml::Error),
+    Yaml(#[from] serde_norway::Error),
     #[error("invalid TOML format: {0}")]
     TomlDe(#[from] toml::de::Error),
     #[error("invalid TOML format: {0}")]
@@ -168,6 +181,64 @@ pub async fn decrypt<P: AsRef<Path>>(
         .map_err(|e| EjsonKmsError::Ejson(e.to_string()))
 }
 
+/// Decrypts an EJSON file and returns the decrypted contents as a typed value.
+///
+/// This function is similar to [`decrypt`], but instead of returning raw bytes,
+/// it returns a [`DecryptedContent`] enum that provides format-agnostic access to
+/// the decrypted data.
+///
+/// This is useful for extracting specific values from the decrypted content
+/// without knowing the file format.
+///
+/// # Security
+///
+/// The decrypted private key is wrapped in [`Zeroizing`](zeroize::Zeroizing) for automatic
+/// memory cleanup when it goes out of scope.
+///
+/// # Arguments
+///
+/// * `ejson_file_path` - Path to the EJSON file to decrypt
+/// * `aws_region` - Optional AWS region override
+///
+/// # Example
+///
+/// ```no_run
+/// use ejsonkms::decrypt_typed;
+///
+/// # async fn example() -> Result<(), ejsonkms::EjsonKmsError> {
+/// let content = decrypt_typed("secrets.ejson", Some("us-east-1")).await?;
+///
+/// // Access values uniformly regardless of JSON/YAML/TOML format
+/// if let Some(env) = content.get("environment") {
+///     if let Some(map) = env.as_string_map() {
+///         for (key, value) in map {
+///             if let Some(v) = value.as_str() {
+///                 println!("{}={}", key, v);
+///             }
+///         }
+///     }
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub async fn decrypt_typed<P: AsRef<Path>>(
+    ejson_file_path: P,
+    aws_region: Option<&str>,
+) -> Result<DecryptedContent, EjsonKmsError> {
+    let path = ejson_file_path.as_ref();
+
+    let private_key_enc = find_private_key_enc(path)?;
+    let kms_decrypted_private_key =
+        decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
+
+    // Decrypt the EJSON file using the decrypted private key and return typed content.
+    // Pass empty string for keydir since we're providing the private key directly.
+    // Pass true for trim_underscore_prefix to remove leading underscore from keys.
+    // The private key is automatically zeroized when kms_decrypted_private_key is dropped.
+    ejson::decrypt_file_typed(path, "", &kms_decrypted_private_key, true)
+        .map_err(|e| EjsonKmsError::Ejson(e.to_string()))
+}
+
 /// Finds the `_private_key_enc` field in an EJSON file.
 ///
 /// Supports JSON, YAML, and TOML formats based on file extension.
@@ -178,7 +249,7 @@ pub fn find_private_key_enc<P: AsRef<Path>>(ejson_file_path: P) -> Result<String
 
     let file: EjsonKmsFile = match format {
         FileFormat::Json => serde_json::from_str(&content)?,
-        FileFormat::Yaml => serde_yml::from_str(&content)?,
+        FileFormat::Yaml => serde_norway::from_str(&content)?,
         FileFormat::Toml => toml::from_str(&content)?,
     };
 

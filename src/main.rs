@@ -1,7 +1,7 @@
 //! ejsonkms CLI - Manage encrypted secrets using EJSON & AWS KMS
 
 use clap::{Parser, Subcommand};
-use ejsonkms::{decrypt, find_private_key_enc, keygen, EjsonKmsError, EjsonKmsOutput, FileFormat};
+use ejsonkms::{decrypt, decrypt_typed, keygen, EjsonKmsError, EjsonKmsOutput, FileFormat};
 use std::fs::{File, OpenOptions};
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -18,20 +18,20 @@ enum CliError {
     Encryption(#[from] ejson::EjsonError),
     #[error("decryption failed: {0}")]
     Decryption(#[from] EjsonKmsError),
+    #[error("environment extraction failed: {0}")]
+    Env(#[from] ejson2env::Ejson2EnvError),
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
     #[error("JSON serialization error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("YAML serialization error: {0}")]
-    Yaml(#[from] serde_yml::Error),
+    Yaml(#[from] serde_norway::Error),
     #[error("TOML serialization error: {0}")]
     Toml(#[from] toml::ser::Error),
     #[error("unsupported file format: {0}")]
     Format(#[from] ejsonkms::FormatError),
     #[error("KMS error: {}", .0.user_message())]
     Kms(#[from] ejsonkms::KmsError),
-    #[error("invalid UTF-8 in file path")]
-    InvalidPath,
 }
 
 /// Manage encrypted secrets using EJSON & AWS KMS
@@ -200,7 +200,7 @@ async fn keygen_action(
 
     let output_content = match format {
         FileFormat::Json => serde_json::to_string_pretty(&ejson_file)?,
-        FileFormat::Yaml => serde_yml::to_string(&ejson_file)?,
+        FileFormat::Yaml => serde_norway::to_string(&ejson_file)?,
         FileFormat::Toml => toml::to_string_pretty(&ejson_file)?,
     };
 
@@ -220,29 +220,20 @@ async fn keygen_action(
 }
 
 async fn env_action(file: &Path, aws_region: Option<&str>, quiet: bool) -> Result<(), CliError> {
-    // Find and decrypt the private key (returns Zeroizing<String> for automatic cleanup)
-    let private_key_enc = find_private_key_enc(file)?;
-    let kms_decrypted_private_key =
-        ejsonkms::decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
+    // Decrypt using the typed API for format-agnostic access
+    let content = decrypt_typed(file, aws_region).await?;
 
-    // Read and extract environment variables
-    // Pass empty string for keydir since we're providing the private key directly
-    // Pass true for trim_underscore_prefix to trim underscore prefix from variable names
-    // (e.g., _DATABASE_HOST becomes DATABASE_HOST, __KEY becomes _KEY)
-    // The private key is automatically zeroized when kms_decrypted_private_key is dropped
-    let file_str = file.to_str().ok_or(CliError::InvalidPath)?;
-    let env_values =
-        ejson2env::read_and_extract_env(file_str, "", &kms_decrypted_private_key, true)
-            .unwrap_or_else(|e| {
-                if ejson2env::is_env_error(&e) {
-                    // No environment key or invalid - not a fatal error, just no output
-                    ejson2env::SecretEnvMap::new()
-                } else {
-                    // Log non-env errors (decryption failures, file errors, etc.) for debugging
-                    eprintln!("warning: failed to extract environment variables: {e}");
-                    ejson2env::SecretEnvMap::new()
-                }
-            });
+    // Extract environment variables using ejson2env's unified extraction function
+    let env_values = ejson2env::extract_env(&content).unwrap_or_else(|e| {
+        if ejson2env::is_env_error(&e) {
+            // No environment key or invalid - not a fatal error, just no output
+            ejson2env::SecretEnvMap::new()
+        } else {
+            // Log non-env errors (decryption failures, file errors, etc.) for debugging
+            eprintln!("warning: failed to extract environment variables: {e}");
+            ejson2env::SecretEnvMap::new()
+        }
+    });
 
     // Export the environment variables
     let mut stdout = io::stdout();
