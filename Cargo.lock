@@ -521,9 +521,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.52"
+version = "1.2.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd4932aefd12402b36c60956a4fe0035421f544799057659ff86f923657aada3"
+checksum = "755d2fce177175ffca841e9a06afdb2c4ab0f593d53b4dee48147dfaade85932"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -739,8 +739,8 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "ejson"
-version = "0.0.14"
-source = "git+https://github.com/runlevel5/ejson-rs.git?tag=v0.0.14#e6824b8728e071cb2fe7b705a9b855cacade7cfd"
+version = "0.0.15"
+source = "git+https://github.com/runlevel5/ejson-rs.git?tag=v0.0.15#62e220da31fda35ee0b11cb63b0f496beae52917"
 dependencies = [
  "base64",
  "clap",
@@ -758,8 +758,8 @@ dependencies = [
 
 [[package]]
 name = "ejson2env"
-version = "0.0.11"
-source = "git+https://github.com/runlevel5/ejson2env-rs.git?tag=v0.0.11#b5a6f85ad2bd81c244d65841e5d6d188156b206a"
+version = "0.0.12"
+source = "git+https://github.com/runlevel5/ejson2env-rs.git?tag=v0.0.12#b183bc641489849c1aac6d691dfbf13fc781a6cd"
 dependencies = [
  "clap",
  "ejson",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "ejsonkms"
-version = "0.0.7"
+version = "0.0.8"
 dependencies = [
  "aws-config",
  "aws-sdk-kms",
@@ -817,9 +817,9 @@ checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f449e6c6c08c865631d4890cfacf252b3d396c9bcc83adb6623cdb02a8336c41"
+checksum = "8591b0bcc8a98a64310a2fae1bb3e9b8564dd10e381e6e28010fde8e8e8568db"
 
 [[package]]
 name = "fnv"
@@ -1623,7 +1623,7 @@ dependencies = [
  "aws-lc-rs",
  "once_cell",
  "rustls-pki-types",
- "rustls-webpki 0.103.8",
+ "rustls-webpki 0.103.9",
  "subtle",
  "zeroize",
 ]
@@ -1642,9 +1642,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-pki-types"
-version = "1.13.3"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4910321ebe4151be888e35fe062169554e74aad01beafed60410131420ceffbc"
+checksum = "be040f8b0a225e40375822a563fa9524378b9d63112f53e19ffff34df5d33fdd"
 dependencies = [
  "zeroize",
 ]
@@ -1661,9 +1661,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.8"
+version = "0.103.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ffdfa2f5286e2247234e03f680868ac2815974dc39e00ea15adc445d0aafe52"
+checksum = "d7df23109aa6c1567d1c575b9952556388da57401e4ace1d15f79eedad0d8f53"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -2607,6 +2607,6 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.14"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd8f3f50b848df28f887acb68e41201b5aea6bc8a8dacc00fb40635ff9a72fea"
+checksum = "94f63c051f4fe3c1509da62131a678643c5b6fbdc9273b2b79d4378ebda003d2"

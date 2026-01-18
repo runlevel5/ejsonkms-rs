@@ -227,16 +227,25 @@ pub async fn decrypt_typed<P: AsRef<Path>>(
 ) -> Result<DecryptedContent, EjsonKmsError> {
     let path = ejson_file_path.as_ref();
 
-    let private_key_enc = find_private_key_enc(path)?;
+    // Read file once and reuse for both key extraction and decryption
+    let (content, format) = read_file_with_format(path)?;
+
+    let private_key_enc = extract_private_key_enc(&content, format)?;
     let kms_decrypted_private_key =
         decrypt_private_key_with_kms(&private_key_enc, aws_region).await?;
 
-    // Decrypt the EJSON file using the decrypted private key and return typed content.
+    // Decrypt the EJSON content using the decrypted private key and return typed content.
     // Pass empty string for keydir since we're providing the private key directly.
     // Pass true for trim_underscore_prefix to remove leading underscore from keys.
     // The private key is automatically zeroized when kms_decrypted_private_key is dropped.
-    ejson::decrypt_file_typed(path, "", &kms_decrypted_private_key, true)
-        .map_err(|e| EjsonKmsError::Ejson(e.to_string()))
+    ejson::decrypt_bytes_typed(
+        content.as_bytes(),
+        "",
+        &kms_decrypted_private_key,
+        format,
+        true,
+    )
+    .map_err(|e| EjsonKmsError::Ejson(e.to_string()))
 }
 
 /// Finds the `_private_key_enc` field in an EJSON file.
@@ -244,13 +253,24 @@ pub async fn decrypt_typed<P: AsRef<Path>>(
 /// Supports JSON, YAML, and TOML formats based on file extension.
 pub fn find_private_key_enc<P: AsRef<Path>>(ejson_file_path: P) -> Result<String, EjsonKmsError> {
     let path = ejson_file_path.as_ref();
+    let (content, format) = read_file_with_format(path)?;
+    extract_private_key_enc(&content, format)
+}
+
+/// Reads a file and determines its format based on extension.
+fn read_file_with_format<P: AsRef<Path>>(path: P) -> Result<(String, FileFormat), EjsonKmsError> {
+    let path = path.as_ref();
     let content = fs::read_to_string(path)?;
     let format = FileFormat::from_path(path)?;
+    Ok((content, format))
+}
 
+/// Extracts `_private_key_enc` from content based on format.
+fn extract_private_key_enc(content: &str, format: FileFormat) -> Result<String, EjsonKmsError> {
     let file: EjsonKmsFile = match format {
-        FileFormat::Json => serde_json::from_str(&content)?,
-        FileFormat::Yaml => serde_norway::from_str(&content)?,
-        FileFormat::Toml => toml::from_str(&content)?,
+        FileFormat::Json => serde_json::from_str(content)?,
+        FileFormat::Yaml => serde_norway::from_str(content)?,
+        FileFormat::Toml => toml::from_str(content)?,
     };
 
     file.private_key_enc
