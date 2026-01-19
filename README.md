@@ -2,7 +2,7 @@
 
 A Rust implementation of [envato/ejsonkms](https://github.com/envato/ejsonkms). This is a drop-in replacement for the original Go implementation, with support for **YAML** and **TOML** file formats.
 
- `ejsonkms` combines the [ejson](https://github.com/runlevel5/ejson-rs) and [ejson2env](https://github.com/runlevel5/ejson2env-rs) libraries with [AWS Key Management Service](https://aws.amazon.com/kms/) to simplify deployments on AWS. The EJSON private key is encrypted with KMS and stored inside the EJSON file as `_private_key_enc`. Access to decrypt secrets can be controlled with IAM permissions on the KMS key.
+ `ejsonkms` uses the [ejson-rs](https://github.com/runlevel5/ejson-rs) library with [AWS Key Management Service](https://aws.amazon.com/kms/) to simplify deployments on AWS. The EJSON private key is encrypted with KMS and stored inside the EJSON file as `_private_key_enc`. Access to decrypt secrets can be controlled with IAM permissions on the KMS key.
 
 ## Supported File Formats
 
