@@ -739,8 +739,8 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "ejson"
-version = "0.0.15"
-source = "git+https://github.com/runlevel5/ejson-rs.git?tag=v0.0.15#62e220da31fda35ee0b11cb63b0f496beae52917"
+version = "1.0.0"
+source = "git+https://github.com/runlevel5/ejson-rs.git?tag=v1.0.0#ec867dee901f4281488262691ca2715cf3d297bd"
 dependencies = [
  "base64",
  "clap",
@@ -757,26 +757,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "ejson2env"
-version = "0.0.12"
-source = "git+https://github.com/runlevel5/ejson2env-rs.git?tag=v0.0.12#b183bc641489849c1aac6d691dfbf13fc781a6cd"
-dependencies = [
- "clap",
- "ejson",
- "thiserror",
- "zeroize",
-]
-
-[[package]]
 name = "ejsonkms"
-version = "0.0.8"
+version = "1.0.0"
 dependencies = [
  "aws-config",
  "aws-sdk-kms",
  "base64",
  "clap",
  "ejson",
- "ejson2env",
  "serde",
  "serde_json",
  "serde_norway",
@@ -1925,18 +1913,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.17"
+version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
+checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.17"
+version = "2.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
+checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
 dependencies = [
  "proc-macro2",
  "quote",

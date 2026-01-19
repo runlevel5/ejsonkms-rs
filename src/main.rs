@@ -19,7 +19,7 @@ enum CliError {
     #[error("decryption failed: {0}")]
     Decryption(#[from] EjsonKmsError),
     #[error("environment extraction failed: {0}")]
-    Env(#[from] ejson2env::Ejson2EnvError),
+    Env(#[from] ejson::env::EnvError),
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
     #[error("JSON serialization error: {0}")]
@@ -223,24 +223,24 @@ async fn env_action(file: &Path, aws_region: Option<&str>, quiet: bool) -> Resul
     // Decrypt using the typed API for format-agnostic access
     let content = decrypt_typed(file, aws_region).await?;
 
-    // Extract environment variables using ejson2env's unified extraction function
-    let env_values = ejson2env::extract_env(&content).unwrap_or_else(|e| {
-        if ejson2env::is_env_error(&e) {
+    // Extract environment variables using ejson's unified extraction function
+    let env_values = ejson::env::extract_env(&content).unwrap_or_else(|e| {
+        if ejson::env::is_env_error(&e) {
             // No environment key or invalid - not a fatal error, just no output
-            ejson2env::SecretEnvMap::new()
+            ejson::env::SecretEnvMap::new()
         } else {
             // Log non-env errors (decryption failures, file errors, etc.) for debugging
             eprintln!("warning: failed to extract environment variables: {e}");
-            ejson2env::SecretEnvMap::new()
+            ejson::env::SecretEnvMap::new()
         }
     });
 
     // Export the environment variables
     let mut stdout = io::stdout();
     if quiet {
-        ejson2env::export_quiet(&mut stdout, &env_values);
+        ejson::env::export_quiet(&mut stdout, &env_values)?;
     } else {
-        ejson2env::export_env(&mut stdout, &env_values);
+        ejson::env::export_env(&mut stdout, &env_values)?;
     }
 
     Ok(())
