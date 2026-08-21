@@ -1,0 +1,11 @@
+services:
+  awskms:
+    image: "nsmithuk/local-kms"
+    environment:
+      REGION: us-east-1
+      KMS_REGION: us-east-1
+      KMS_ACCOUNT_ID: 111122223333
+    volumes:
+      - "./local_kms/:/init/"
+    ports:
+      - "8080:8080"
